@@ -1,24 +1,26 @@
 ## proj_nps.py
 ## Skeleton for Project 2, Fall 2018
 ## ~~~ modify this file, but don't rename it ~~~
-from secrets import google_places_key
+from secrets import google_places_key, plotly_key
 from bs4 import BeautifulSoup
 from alternate_advanced_caching import Cache
 import requests
+import plotly.plotly as py
+import plotly.graph_objs as go
 from datetime import datetime
 import json
+from places_utils import NearbyPlace,get_site_coordinates,get_nearby_places_for_site
+from scraping_utils import create_id,process,NationalSite,state_process,get_sites_for_state
 
 
 #####################################
 ## Scrape NPS site
 #####################################
+project_dictionary = {}
+
 def create_id(site, topic):
     return "{}_{}_{}.json".format(site, topic, str(datetime.now()).replace(' ', ''))
 
-
-project_dictionary = {}
-states_sites_dictionary = {}
-park_data = []
 
 def process(response):
     ## use the `response` to create a BeautifulSoup object
@@ -32,6 +34,7 @@ def process(response):
 #################################
 #     CONFIG & RUN LIST SCRAPE     #
 #################################
+
 cache_file = "NPS.json"
 site="NPS"
 topic="states"
@@ -51,7 +54,6 @@ process(response)
 ## NATIONAL SITE CLASS
 #####################################
 
-## you can, and should add to and modify this class any way you see fityou can add attributes and modify the __init__ parameters,as long as tests still pass the starter code is here just to make the tests run (and fail)
 class NationalSite():
     def __init__(self, type, name, desc, address, url=None):
         self.type = type
@@ -119,12 +121,26 @@ def get_sites_for_state(state_abbr):
 ##############################################END PART 1##################################
 
 #####################################
-## API
+## GOOGLE PLACES API
 #####################################
 
 class NearbyPlace():
-    def __init__(self, name):
+    def __init__(self, name, lat, long):
         self.name = name
+        self.lat = lat
+        self.long = long
+
+    def getname(self):
+        return self.name
+
+    def getlat(self):
+        return self.lat
+
+    def getlong(self):
+        return self.long
+
+    def getcoordinates(self):
+        return self.lat , self.long
 
     def __str__(self):
         return "{}".format(self.name)
@@ -135,18 +151,70 @@ class NearbyPlace():
 ##          if the site is not found by a Google Places search, this should
 ##          return an empty list
 
-def get_nearby_places_for_site(national_site):
-    state = state_abbr
-    topic= state + " " + site_search_name
+def get_site_coordinates(national_site):
+    site = "GOOGLE"
+    topic = national_site
     cache = Cache(cache_file)
+    base1 = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?"
+    params_d = {}
+    params_d["key"] = google_places_key
+    params_d["input"] = national_site
+    params_d["inputtype"] = "textquery"
+    params_d['fields'] = 'geometry,formatted_address'
+    # params_d["locationbias"] = "point:lat,lng"
+    UID = create_id(site, topic)
+    get_data = cache.get(UID)
+    if get_data == None:
+        get_data = requests.get(base1, params_d).text
+        #testurl = requests.get(base1, params_d).url
+        #print(testurl)
+        cache.set(UID, get_data)
+    lat = 0
+    long = 0
+    site_data = json.loads(get_data)
+    try:
+        place = site_data['candidates'][0]
+        latitude = place['geometry']['location']['lat']
+        longitude = place['geometry']['location']['lng']
+        site_coordinates = latitude, longitude
+    except:
+            site_coordinates = lat,long
+    return site_coordinates
+
+def get_nearby_places_for_site(national_site):
+    coordinates = get_site_coordinates(national_site)
+    latitude = str(coordinates[0])
+    longitude = str(coordinates[1])
+    location = latitude + "," +longitude
+    site = "GOOGLE"
+    national_site = national_site
+    topic= "nearby " + national_site
+    cache = Cache(cache_file)
+    base2 = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?"
+    params_d2 = {}
+    params_d2["key"] = google_places_key
+    params_d2["location"] = location
+    params_d2["radius"] = 10000
     UID = create_id(site, topic)
     nearby_response = cache.get(UID)
     if nearby_response == None:
-        nearby_response = requests.get(base).text
+        nearby_response = requests.get(base2, params_d2).text
+        testurl = requests.get(base2, params_d2).url
+        #print(testurl)
+        #response = nearby_response.json()
         cache.set(UID, nearby_response)
-    NationalSiteList = state_process(state_response)
-    return NationalSiteList
-    return []
+    responses = json.loads(nearby_response)
+    responses = responses["results"]
+    NearbyList = []
+    for i in responses:
+        name = i["name"]
+        latitude = i["geometry"]["location"]["lat"]
+        longitude = i["geometry"]["location"]["lng"]
+        place = NearbyPlace(name, latitude, longitude)
+        NearbyList.append(place)
+    return NearbyList
+
+
 
 
 
@@ -157,22 +225,130 @@ def get_nearby_places_for_site(national_site):
 #####################################
 
 
-# ## Must plot all of the NationalSites listed for the state on nps.gov
-# ## Note that some NationalSites might actually be located outside the state.
-# ## If any NationalSites are not found by the Google Places API they should
-# ##  be ignored.
-# ## param: the 2-letter state abbreviation
-# ## returns: nothing
-# ## side effects: launches a plotly page in the web browser
-# def plot_sites_for_state(state_abbr):
-#     pass
-#
-# ## Must plot up to 20 of the NearbyPlaces found using the Google Places API
-# ## param: the NationalSite around which to search
-# ## returns: nothing
-# ## side effects: launches a plotly page in the web browser
-# def plot_nearby_for_site(site_object):
-#     pass
+
+
+
+
+
+## Must plot all of the NationalSites listed for the state on nps.gov
+## Note that some NationalSites might actually be located outside the state.
+## If any NationalSites are not found by the Google Places API they should
+##  be ignored.
+## param: the 2-letter state abbreviation
+## returns: nothing
+## side effects: launches a plotly page in the web browser
+def plot_sites_for_state(state_abbr,coordinate_list):
+    lat_vals = []
+    lon_vals = []
+
+    for i in coordinate_list:
+        lat_vals.append(str(i[0]))
+        lon_vals.append(str(i[1]))
+
+    trace1 = dict(
+            type = 'scattergeo',
+            locationmode = 'USA-states',
+            lon = lon_vals,
+            lat = lat_vals,
+            mode = 'markers',
+            marker = dict(
+                size = 15,
+                symbol = 'star',
+                color = "red"
+            ))
+
+    data = [trace1]
+
+    layout = dict(
+            title = print ("National Sites in {}".format(state_abbr.upper())),
+            geo = dict(
+                scope='usa',
+                projection=dict( type='albers usa' ),
+                showland = True,
+                landcolor = "rgb(250, 250, 250)",
+                subunitcolor = "rgb(100, 217, 217)",
+                countrycolor = "rgb(217, 100, 217)",
+                countrywidth = 3,
+                subunitwidth = 3
+            ),
+        )
+
+
+    fig = dict( data=data, layout=layout )
+    py.plot( fig, validate=False, filename='usa-airports-by-size' )
+
+## Must plot up to 20 of the NearbyPlaces found using the Google Places API
+## param: the NationalSite around which to search
+## returns: nothing
+## side effects: launches a plotly page in the web browser
+def plot_nearby_for_site(site_object):
+    big_lat_vals = []
+    big_lon_vals = []
+    big_text_vals = []
+
+    small_lat_vals = []
+    small_lon_vals = []
+    small_text_vals = []
+
+    for row in csv_data:
+        if row[0] != 'iata':
+            traffic = int(row[7])
+            if traffic > 1000:
+                big_lat_vals.append(row[5])
+                big_lon_vals.append(row[6])
+                big_text_vals.append(row[1])
+            else:
+                small_lat_vals.append(row[5])
+                small_lon_vals.append(row[6])
+                small_text_vals.append(row[1])
+
+
+
+    trace1 = dict(
+            type = 'scattergeo',
+            locationmode = 'USA-states',
+            lon = big_lon_vals,
+            lat = big_lat_vals,
+            text = big_text_vals,
+            mode = 'markers',
+            marker = dict(
+                size = 15,
+                symbol = 'star',
+                color = "red"
+            ))
+
+    trace2 = dict(
+            type = 'scattergeo',
+            locationmode = 'USA-states',
+            lon = small_lon_vals,
+            lat = small_lat_vals,
+            text = small_text_vals,
+            mode = 'markers',
+            marker = dict(
+                size = 8,
+                symbol = 'circle',
+                color = "blue"
+            ))
+
+    data = [trace1, trace2]
+
+    layout = dict(
+            title = print ("Places near {} {}".format(PARKNAME, PARKTYPE)),
+            geo = dict(
+                scope='usa',
+                projection=dict( type='albers usa' ),
+                showland = True,
+                landcolor = "rgb(250, 250, 250)",
+                subunitcolor = "rgb(100, 217, 217)",
+                countrycolor = "rgb(217, 100, 217)",
+                countrywidth = 3,
+                subunitwidth = 3
+            ),
+        )
+
+
+    fig = dict( data=data, layout=layout )
+    py.plot( fig, validate=False, filename='usa-airports-by-size' )
 
 ##############################################END PART 3##################################
 
@@ -212,11 +388,23 @@ def main():
             reference_site = state_printlist[site_number]
             sn = reference_site.getname()
             st = reference_site.gettype()
-            site_search_name = sn + " " + st
-            print(site_search_name)
+            national_site = sn + " " + st
+            nearby_site_list = get_nearby_places_for_site(national_site)
+            numberlist_nearby = list(range(len(nearby_site_list)+1))
+            numberlist_nearby = numberlist_nearby[1:]
+            ziplist_nearby = zip(numberlist_nearby, nearby_site_list)
+            nearby_printlist = dict(ziplist_nearby)
+            for k in nearby_printlist:
+                print ("{}) {}".format(k, nearby_printlist[k]))
             current_level = "nearby"
         elif user_input == "map":
             if current_level == "state":
+                coordinate_list = []
+                for i in list_of_sites:
+                    x = "{} {}".format(i.getname(), i.gettype())
+                    y = get_site_coordinates(x)
+                    coordinate_list.append(y)
+                plot_sites_for_state(state_abbr, coordinate_list)
                 print("state_level")
             elif current_level == "nearby":
                 get_nearby_places_for_site(national_site)
