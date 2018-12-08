@@ -242,8 +242,11 @@ def plot_sites_for_state(state_abbr,coordinate_list):
     lon_vals = []
 
     for i in coordinate_list:
-        lat_vals.append(str(i[0]))
-        lon_vals.append(str(i[1]))
+        if i[0] == 0:
+            continue
+        else:
+            lat_vals.append(str(i[0]))
+            lon_vals.append(str(i[1]))
 
     trace1 = dict(
             type = 'scattergeo',
@@ -259,6 +262,32 @@ def plot_sites_for_state(state_abbr,coordinate_list):
 
     data = [trace1]
 
+
+    min_lat = 10000
+    max_lat = -10000
+    min_lon = 10000
+    max_lon = -10000
+
+    for str_v in lat_vals:
+        v = float(str_v)
+        if v < min_lat:
+            min_lat = v
+        if v > max_lat:
+            max_lat = v
+    for str_v in lon_vals:
+        v = float(str_v)
+        if v < min_lon:
+            min_lon = v
+        if v > max_lon:
+            max_lon = v
+
+
+    lat_axis = [min_lat, max_lat]
+    lon_axis = [min_lon, max_lon]
+
+    center_lat = (max_lat+min_lat) / 2
+    center_lon = (max_lon+min_lon) / 2
+
     layout = dict(
             title = print ("National Sites in {}".format(state_abbr.upper())),
             geo = dict(
@@ -268,6 +297,9 @@ def plot_sites_for_state(state_abbr,coordinate_list):
                 landcolor = "rgb(250, 250, 250)",
                 subunitcolor = "rgb(100, 217, 217)",
                 countrycolor = "rgb(217, 100, 217)",
+                lataxis = {'range': lat_axis},
+                lonaxis = {'range': lon_axis},
+                center= {'lat': center_lat, 'lon': center_lon },
                 countrywidth = 3,
                 subunitwidth = 3
             ),
@@ -281,35 +313,33 @@ def plot_sites_for_state(state_abbr,coordinate_list):
 ## param: the NationalSite around which to search
 ## returns: nothing
 ## side effects: launches a plotly page in the web browser
-def plot_nearby_for_site(site_object):
-    big_lat_vals = []
-    big_lon_vals = []
-    big_text_vals = []
+def plot_nearby_for_site(nearby_site_list, national_site):
 
-    small_lat_vals = []
-    small_lon_vals = []
-    small_text_vals = []
+    site_coords = get_site_coordinates(national_site)
+    site_lat_vals = [str(site_coords[0])]
+    site_lon_vals = [str(site_coords[1])]
 
-    for row in csv_data:
-        if row[0] != 'iata':
-            traffic = int(row[7])
-            if traffic > 1000:
-                big_lat_vals.append(row[5])
-                big_lon_vals.append(row[6])
-                big_text_vals.append(row[1])
-            else:
-                small_lat_vals.append(row[5])
-                small_lon_vals.append(row[6])
-                small_text_vals.append(row[1])
+    if site_lat_vals == 0:
+        print ("sorry we were unable to map this location")
+        return "oops"
 
+    nearby_lat_vals = []
+    nearby_lon_vals = []
 
+    for i in nearby_site_list:
+        nlat_val = i.getlat()
+        nlon_val = i.getlong()
+        if nlat_val == 0:
+            continue
+        else:
+            nearby_lat_vals.append(nlat_val)
+            nearby_lon_vals.append(nlon_val)
 
-    trace1 = dict(
+    Site = dict(
             type = 'scattergeo',
             locationmode = 'USA-states',
-            lon = big_lon_vals,
-            lat = big_lat_vals,
-            text = big_text_vals,
+            lon = site_lon_vals,
+            lat = site_lat_vals,
             mode = 'markers',
             marker = dict(
                 size = 15,
@@ -317,12 +347,11 @@ def plot_nearby_for_site(site_object):
                 color = "red"
             ))
 
-    trace2 = dict(
+    Nearby = dict(
             type = 'scattergeo',
             locationmode = 'USA-states',
-            lon = small_lon_vals,
-            lat = small_lat_vals,
-            text = small_text_vals,
+            lon = nearby_lon_vals,
+            lat = nearby_lat_vals,
             mode = 'markers',
             marker = dict(
                 size = 8,
@@ -330,10 +359,34 @@ def plot_nearby_for_site(site_object):
                 color = "blue"
             ))
 
-    data = [trace1, trace2]
+    data = [Site, Nearby]
+
+    min_lat = 10000
+    max_lat = -10000
+    min_lon = 10000
+    max_lon = -10000
+
+    for str_v in nearby_lat_vals:
+        v = float(str_v)
+        if v < min_lat:
+            min_lat = v
+        if v > max_lat:
+            max_lat = v
+    for str_v in nearby_lon_vals:
+        v = float(str_v)
+        if v < min_lon:
+            min_lon = v
+        if v > max_lon:
+            max_lon = v
+
+    lat_axis = [min_lat, max_lat]
+    lon_axis = [min_lon, max_lon]
+
+    center_lat = (max_lat+min_lat) / 2
+    center_lon = (max_lon+min_lon) / 2
 
     layout = dict(
-            title = print ("Places near {} {}".format(PARKNAME, PARKTYPE)),
+            title = print ("Places near {}".format(national_site)),
             geo = dict(
                 scope='usa',
                 projection=dict( type='albers usa' ),
@@ -341,6 +394,9 @@ def plot_nearby_for_site(site_object):
                 landcolor = "rgb(250, 250, 250)",
                 subunitcolor = "rgb(100, 217, 217)",
                 countrycolor = "rgb(217, 100, 217)",
+                lataxis = {'range': lat_axis},
+                lonaxis = {'range': lon_axis},
+                center= {'lat': center_lat, 'lon': center_lon },
                 countrywidth = 3,
                 subunitwidth = 3
             ),
@@ -405,10 +461,8 @@ def main():
                     y = get_site_coordinates(x)
                     coordinate_list.append(y)
                 plot_sites_for_state(state_abbr, coordinate_list)
-                print("state_level")
             elif current_level == "nearby":
-                get_nearby_places_for_site(national_site)
-                print("nearby_level")
+                plot_nearby_for_site(nearby_site_list, national_site)
             else:
                 continue
         elif user_input == 'help':
@@ -417,12 +471,12 @@ def main():
             print("result: lists, for user to see, all National Sites in a state, with numbers beside them")
             print("valid inputs: a two-letter state abbreviation")
             print("")
-            print("*  `nearby <result_number>` — e.g. `nearby 2`")
+            print("* `nearby <result_number>` — e.g. `nearby 2`")
             print("(available as possible input only if there is an active result set — if you have already input `list <stateabbr>`)")
             print("lists all `Places` nearby a given result")
             print("valid inputs: an integer (that is included in the list)")
             print("")
-            print("*   `map` - e.g. `map`")
+            print("* `map` - e.g. `map`")
             print("displays the current results (if any) on a map")
             print("if there are no current results, it shows nothing")
             print("so for example, if the last thing you searched in input was `list MI`, you should see a map of all the national sites in Michigan. If the last thing you searched was e.g. `nearby 2` and 2 on the list was the park `Sleeping Bear Dunes`, you should see a map of all the places near Sleeping Bear Dunes)")
@@ -430,7 +484,7 @@ def main():
             print("* `exit`")
             print("exits the program")
             print("")
-            print("*   `help`")
+            print("* `help`")
             print("lists available commands (these instructions, as shown above)")
 
 
@@ -438,7 +492,7 @@ def main():
             print("Thank you for exploring with us! Goodbye!")
             exit()
         else:
-            print("Please enter an appropriate command! Enter HELP to see what the ")
+            print("Please enter an appropriate command! Enter HELP to see what the commands do")
 
 if __name__ == "__main__":
     main()
