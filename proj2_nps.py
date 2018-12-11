@@ -7,10 +7,7 @@ from alternate_advanced_caching import Cache
 import requests
 import plotly.plotly as py
 import plotly.graph_objs as go
-from datetime import datetime
 import json
-from places_utils import NearbyPlace,get_site_coordinates,get_nearby_places_for_site
-from scraping_utils import create_id,process,NationalSite,state_process,get_sites_for_state
 
 
 #####################################
@@ -19,7 +16,7 @@ from scraping_utils import create_id,process,NationalSite,state_process,get_site
 project_dictionary = {}
 
 def create_id(site, topic):
-    return "{}_{}_{}.json".format(site, topic, str(datetime.now()).replace(' ', ''))
+    return "{}_{}".format(site, topic)
 
 
 def process(response):
@@ -179,10 +176,14 @@ def get_site_coordinates(national_site):
         site_coordinates = latitude, longitude
     except:
             site_coordinates = lat,long
+            print("Sorry! There was an error retrieving coordinates for {}. We will not be able to list its nearby places or map it.".format(national_site))
     return site_coordinates
 
 def get_nearby_places_for_site(national_site):
     coordinates = get_site_coordinates(national_site)
+    if coordinates[0] == 0:
+        print(">>> UNABLE TO RETRIEVE NEARBY PLACES")
+        return None
     latitude = str(coordinates[0])
     longitude = str(coordinates[1])
     location = latitude + "," +longitude
@@ -307,7 +308,7 @@ def plot_sites_for_state(state_abbr,coordinate_list):
 
 
     fig = dict( data=data, layout=layout )
-    py.plot( fig, validate=False, filename='usa-airports-by-size' )
+    py.plot( fig, validate=False, filename="national_sites_in_{}".format(state_abbr.upper()) )
 
 ## Must plot up to 20 of the NearbyPlaces found using the Google Places API
 ## param: the NationalSite around which to search
@@ -321,7 +322,10 @@ def plot_nearby_for_site(nearby_site_list, national_site):
 
     if site_lat_vals == 0:
         print ("sorry we were unable to map this location")
-        return "oops"
+        return None
+    if nearby_site_list == None:
+        print(">>> UNABLE TO MAP NEARBY SITES")
+        return None
 
     nearby_lat_vals = []
     nearby_lon_vals = []
@@ -404,7 +408,7 @@ def plot_nearby_for_site(nearby_site_list, national_site):
 
 
     fig = dict( data=data, layout=layout )
-    py.plot( fig, validate=False, filename='usa-airports-by-size' )
+    py.plot( fig, validate=False, filename='sites_nearby_{}'.format(national_site) )
 
 ##############################################END PART 3##################################
 
@@ -422,6 +426,9 @@ def print_options():
     print("--- map")
     print("--- exit")
     print("--- help")
+
+
+current_level = "top"
 
 def main():
 
@@ -446,25 +453,31 @@ def main():
             st = reference_site.gettype()
             national_site = sn + " " + st
             nearby_site_list = get_nearby_places_for_site(national_site)
-            numberlist_nearby = list(range(len(nearby_site_list)+1))
-            numberlist_nearby = numberlist_nearby[1:]
-            ziplist_nearby = zip(numberlist_nearby, nearby_site_list)
-            nearby_printlist = dict(ziplist_nearby)
-            for k in nearby_printlist:
-                print ("{}) {}".format(k, nearby_printlist[k]))
-            current_level = "nearby"
-        elif user_input == "map":
-            if current_level == "state":
-                coordinate_list = []
-                for i in list_of_sites:
-                    x = "{} {}".format(i.getname(), i.gettype())
-                    y = get_site_coordinates(x)
-                    coordinate_list.append(y)
-                plot_sites_for_state(state_abbr, coordinate_list)
-            elif current_level == "nearby":
-                plot_nearby_for_site(nearby_site_list, national_site)
-            else:
+            if nearby_site_list == None:
+                current_level = "nearby"
                 continue
+            else:
+                numberlist_nearby = list(range(len(nearby_site_list)+1))
+                numberlist_nearby = numberlist_nearby[1:]
+                ziplist_nearby = zip(numberlist_nearby, nearby_site_list)
+                nearby_printlist = dict(ziplist_nearby)
+                for k in nearby_printlist:
+                    print ("{}) {}".format(k, nearby_printlist[k]))
+                current_level = "nearby"
+        elif user_input == "map":
+            try:
+                if current_level == "state":
+                    coordinate_list = []
+                    for i in list_of_sites:
+                        x = "{} {}".format(i.getname(), i.gettype())
+                        y = get_site_coordinates(x)
+                        coordinate_list.append(y)
+                        plot_sites_for_state(state_abbr, coordinate_list)
+                elif current_level == "nearby":
+                    plot_nearby_for_site(nearby_site_list, national_site)
+            except:
+                print("There is nothing to map yet. Try listing sites in a state or enter HELP if you need help.")
+
         elif user_input == 'help':
             print("* `list <stateabbr>` — e.g. `list MI`")
             print("(always available as possible input)")
